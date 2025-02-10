@@ -3,18 +3,20 @@ use std::{
 	ops,
 	os::fd::AsFd,
 	process,
+	time::Instant,
 };
 
 use anyhow::Context as _;
 use gc_arena::{
-	barrier::Write,
 	Collect,
 	RefLock,
 	Rootable,
+	barrier::Write,
 };
 use nix::unistd::Pid;
 use piccolo::{
 	self as lua,
+	IntoValue,
 };
 
 use crate::{
@@ -40,6 +42,46 @@ impl ops::DerefMut for Child {
 	}
 }
 
+fn register_read_line_cb<'gc, S>(
+	ctx: lua::Context<'gc>,
+	comp: lua::UserData<'gc>,
+	s: Option<S>,
+	cb: lua::Function<'gc>,
+) -> anyhow::Result<()>
+where
+	S: 'static + Read + AsFd,
+{
+	let Some(src) = s else {
+		return Ok(());
+	};
+
+	let src = ReadLineCb::new(src, ctx.stash(cb))?;
+
+	let fcomp = ctx.fcomp(comp)?;
+	fcomp.with(|comp| {
+		let reg = comp
+			.loop_handle
+			.insert_source(src, move |_, m, strata| {
+				let now = Instant::now();
+				if let Err(e) = strata.execute_closure::<(), _>(|ctx, _| {
+					let s = lua::String::from_slice(&ctx, &m.buf[..m.buf.len() - 1]).into_value(ctx);
+
+					(ctx.fetch(&m.cb), [s])
+				}) {
+					println!("{:?}", e);
+				};
+				println!("elapsed: {:?}", now.elapsed());
+
+				Ok(())
+			})
+			.map_err(|e| e.error)?;
+
+		anyhow::Ok(())
+	})?;
+
+	Ok(())
+}
+
 impl Child {
 	pub fn new_userdata<'gc>(
 		ctx: lua::Context<'gc>,
@@ -58,43 +100,6 @@ impl Child {
 
 	fn meta<'gc>(ctx: lua::Context<'gc>, comp: lua::UserData<'gc>) -> anyhow::Result<lua::Table<'gc>> {
 		let index = lua::Table::new(&ctx);
-
-		fn register_read_line_cb<'gc, S>(
-			ctx: lua::Context<'gc>,
-			comp: lua::UserData<'gc>,
-			s: Option<S>,
-			cb: lua::Function<'gc>,
-		) -> anyhow::Result<()>
-		where
-			S: 'static + Read + AsFd,
-		{
-			let Some(src) = s else {
-				return Ok(());
-			};
-
-			let src = ReadLineCb::new(src, ctx.stash(cb))?;
-
-			let fcomp = ctx.comp(comp)?;
-			fcomp.with(|comp| {
-				let reg = comp
-					.loop_handle
-					.insert_source(src, move |_, m, strata| {
-						if let Err(e) = strata.execute_closure::<()>(|ctx, ex, _| {
-							let s = lua::String::from_slice(&ctx, &m.buf[..m.buf.len() - 1]);
-							ctx.fetch(ex).restart(ctx, ctx.fetch(&m.cb), (s,));
-						}) {
-							println!("{:?}", e);
-						}
-
-						Ok(())
-					})
-					.map_err(|e| e.error)?;
-
-				anyhow::Ok(())
-			})?;
-
-			Ok(())
-		}
 
 		index.set(
 			ctx,
@@ -135,7 +140,7 @@ impl Child {
 				let pid = this.borrow().id();
 				println!("pid={}", pid);
 
-				let fcomp = ctx.comp(comp)?;
+				let fcomp = ctx.fcomp(comp)?;
 				fcomp.with_mut(|comp| {
 					comp.process_state
 						.on_exit_cbs

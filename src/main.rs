@@ -1,6 +1,8 @@
 // Copyright 2023 the Strata authors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![feature(generic_arg_infer)]
+
 use std::io::stdout;
 
 use chrono::Local;
@@ -61,16 +63,17 @@ fn main() -> anyhow::Result<()> {
 	}
 
 	info!("Initializing Strata WM");
-	state::init_sigchld_handler()?;
 
 	let mut event_loop = EventLoop::try_new()?;
-	let mut display = Display::new()?;
-	let mut comp = Compositor::new(&event_loop, &mut display)?;
+	let mut comp = Compositor::new(&event_loop)?;
 	comp.backend = Backend::from_str(&args.backend, &mut comp)?;
 
-	let mut state = Strata::new(comp, display)?;
-	event_loop.run(None, &mut state, move |state| {
-		state.display.flush_clients().unwrap();
+	let mut state = Strata::new(comp)?;
+	event_loop.run(None, &mut state, move |strata| {
+		match strata.comp.display_handle.flush_clients() {
+			Ok(_) => {},
+			Err(e) => println!("Display I/O Error: {:?}", e),
+};
 	})?;
 
 	info!("Quitting Strata WM");

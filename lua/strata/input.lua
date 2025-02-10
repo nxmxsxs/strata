@@ -18,3 +18,14 @@ function input.keybind(mod, key, action) end
 ---@param action fun()
 function input.mousebind(mod, button, action) end
 
+---@enum strata.input.Modifier
+input.Modifier = {
+}
+
+---@enum strata.input.Key
+input.Key = {
+}
+
+---@enum strata.input.Button
+input.Button = {
+}

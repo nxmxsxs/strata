@@ -1,11 +1,9 @@
 use piccolo::{
 	self as lua,
 };
-use smithay::input::keyboard::XkbConfig;
 
 use crate::{
-	handlers::input::KeyPattern,
-	state::Compositor,
+	state::{Compositor, input},
 	util::FxIndexMap,
 };
 
@@ -61,8 +59,8 @@ impl StrataXkbConfig {
 pub struct StrataInputConfig {
 	pub repeat_info: StrataRepeatInfoConfig,
 	pub xkbconfig: Option<StrataXkbConfig>,
-	pub global_keybinds: FxIndexMap<KeyPattern, lua::StashedFunction>,
-	pub global_mousebinds: FxIndexMap<KeyPattern, lua::StashedFunction>,
+	pub global_keybinds: FxIndexMap<input::KeyPattern, lua::StashedFunction>,
+	pub global_mousebinds: FxIndexMap<input::KeyPattern, lua::StashedFunction>,
 }
 
 impl Default for StrataInputConfig {

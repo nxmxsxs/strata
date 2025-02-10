@@ -27,8 +27,6 @@ strata.input.keybind(m.Control_L + m.Alt_L, k.Escape, function()
 end)
 
 local p = strata.proc.spawn { "pactl", "subscribe" }
-p:on_line_stdout(function(line)
-	print("(lua) stdout=" .. line)
-end)
+p:on_line_stdout(function(line) print("(lua) stdout=" .. line) end)
 p:on_line_stderr(function(line) print("(lua) stderr=" .. line) end)
 p:on_exit(function(status, signal) print("(lua) exited with", status, signal) end)

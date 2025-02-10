@@ -11,30 +11,32 @@ use crate::state::FrozenCompositor;
 mod input;
 mod meta;
 mod proc;
+mod window;
 
 trait ContextExt<'gc> {
-	fn comp(self, ud: lua::UserData<'gc>) -> anyhow::Result<&'gc FrozenCompositor>;
+	fn fcomp(self, ud: lua::UserData<'gc>) -> anyhow::Result<&'gc FrozenCompositor>;
 }
 
 impl<'gc> ContextExt<'gc> for lua::Context<'gc> {
-	fn comp(self, ud: lua::UserData<'gc>) -> anyhow::Result<&'gc FrozenCompositor> {
+	fn fcomp(self, ud: lua::UserData<'gc>) -> anyhow::Result<&'gc FrozenCompositor> {
 		ud.downcast_static::<FrozenCompositor>()
 			.context("expected `FrozenCompositor (userdata)`, got `Unknown (userdata)`")
 	}
 }
 
-pub fn create_global<'gc>(ctx: lua::Context<'gc>, fcomp: &FrozenCompositor) -> anyhow::Result<lua::UserData<'gc>> {
-	let comp = lua::UserData::new_static(&ctx, fcomp.clone());
+pub fn create_global(ctx: lua::Context<'_>, fcomp: FrozenCompositor) -> anyhow::Result<lua::UserData<'_>> {
+	let comp = lua::UserData::new_static(&ctx, fcomp);
 
 	let index = lua::Table::new(&ctx);
 
 	index.set(ctx, "input", input::api(ctx, comp)?)?;
 	index.set(ctx, "proc", proc::api(ctx, comp)?)?;
+	index.set(ctx, "window", window::api(ctx, comp)?)?;
 	index.set(
 		ctx,
 		"quit",
 		lua::Callback::from_fn_with(&ctx, comp, |&comp, ctx, _, _| {
-			let fcomp = ctx.comp(comp)?;
+			let fcomp = ctx.fcomp(comp)?;
 
 			fcomp.with(|comp| {
 				comp.quit();

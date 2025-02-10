@@ -2,8 +2,8 @@ use nix::{
 	sys::{
 		signal,
 		wait::{
-			waitpid,
 			WaitStatus,
+			waitpid,
 		},
 	},
 	unistd::Pid,
@@ -11,6 +11,7 @@ use nix::{
 use once_cell::sync::OnceCell;
 use piccolo::{
 	self as lua,
+	IntoValue,
 };
 use smithay::reexports::calloop;
 
@@ -68,17 +69,15 @@ impl ProcessState {
 			println!("unable to set CHLDTX global");
 		};
 
-		fn call_exit_cb(strata: &mut Strata, pid: Pid, args: impl for<'gc> lua::IntoMultiValue<'gc>) {
-			if strata.enter(|ctx, ex, comp| {
-				comp.process_state
-					.on_exit_cbs
-					.get(&pid)
-					.map(|cb| ctx.fetch(ex).restart(ctx, ctx.fetch(cb), args))
-					.is_some()
+		fn call_exit_cb<const N: usize>(strata: &mut Strata, pid: Pid, args: [impl for<'gc> lua::IntoValue<'gc>; N]) {
+			if let Some(Err(e)) = strata.try_execute_closure::<(), N>(|ctx, comp| {
+				comp.process_state.on_exit_cbs.get(&pid).map(|cb| {
+					let args = args.map(|v| v.into_value(ctx));
+
+					(ctx.fetch(cb), args)
+				})
 			}) {
-				if let Err(e) = strata.execute::<()>() {
-					println!("{:?}", e);
-				}
+				println!("{:?}", e);
 			}
 		}
 
@@ -87,8 +86,13 @@ impl ProcessState {
 				match event {
 					calloop::channel::Event::Msg(ws) => {
 						match ws {
-							WaitStatus::Exited(pid, code) => call_exit_cb(strata, pid, (code, 0)),
-							WaitStatus::Signaled(pid, signal, _) => call_exit_cb(strata, pid, (0, signal as i32)),
+							WaitStatus::Exited(pid, code) => {
+								call_exit_cb(strata, pid, [code as i64, 0]);
+							}
+							WaitStatus::Signaled(pid, signal, _) => {
+								call_exit_cb(strata, pid, [0, signal as i64]);
+							}
+
 							// WaitStatus::Stopped(pid, signal) => todo!(),
 							// WaitStatus::PtraceEvent(pid, signal, _) => todo!(),
 							// WaitStatus::PtraceSyscall(pid) => todo!(),
